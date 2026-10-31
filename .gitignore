@@ -1,0 +1,11 @@
+# Environment variables (never commit real keys)
+.env
+
+# Python virtual environment
+venv/
+
+# Python bytecode
+__pycache__/
+
+# macOS
+.DS_Store
