@@ -12,8 +12,7 @@ A hands-on project for comparing large language models across hosted APIs (OpenA
 
 | Provider   | Env variable          | Notes                              |
 |------------|-----------------------|------------------------------------|
-| OpenAI     | `OPENAI_API_KEY`      | GPT model family                   |
-| Anthropic  | `ANTHROPIC_API_KEY`   | Claude model family                |
+| Google Gemini | `GEMINI_API_KEY` | Gemini model family (free tier via Google AI Studio) |
 | OpenRouter | `OPENROUTER_API_KEY`  | Access to many open & closed models|
 | Ollama     | `OLLAMA_BASE_URL`     | Local models, default `http://localhost:11434` |
 
