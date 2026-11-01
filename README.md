@@ -1,6 +1,6 @@
 # AI Model Benchmarker
 
-A hands-on project for comparing large language models across hosted APIs (OpenAI, Anthropic, OpenRouter) and local models (Ollama) on quality, latency, and cost — built over a structured 4-week plan.
+A hands-on project for comparing large language models across hosted APIs (Gemini, OpenRouter) and local models (Ollama) on quality, latency, and cost — built over a structured 4-week plan.
 
 ## Goals
 
