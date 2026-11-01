@@ -1,0 +1,78 @@
+# Model tiers and pricing for the benchmarker.
+#
+# Prices are USD per 1M tokens at the provider's standard paid rate.
+# `billing` controls what the "billed" cost column shows:
+#   paid  -> list price is charged
+#   free  -> you're on a free tier, billed cost is $0 (list price is still reported)
+#   local -> runs on your own hardware, both costs are $0
+#
+# Optional `params` override request settings per model (null = don't send).
+#
+# Each tier tries `primary` first and falls back to `fallback` when the primary's
+# credential is missing or its warm-up request fails.
+#
+# Verify prices before publishing results; they change often.
+last_updated: "2026-11-01"
+
+pricing_sources:
+  gemini: https://ai.google.dev/pricing
+  openrouter: https://openrouter.ai/models
+
+providers:
+  gemini:
+    env_key: GEMINI_API_KEY
+    max_concurrency: 2        # free tier has tight RPM limits
+  openrouter:
+    env_key: OPENROUTER_API_KEY
+    max_concurrency: 4
+  ollama:
+    env_base_url: OLLAMA_BASE_URL
+    default_base_url: http://localhost:11434
+    max_concurrency: 1        # local GPU/CPU: parallel requests would distort latency
+
+tiers:
+  frontier:
+    primary:
+      model: gemini/gemini-3.1-pro-preview
+      provider: gemini
+      input_per_1m: 2.00      # <=200k-token prompts
+      output_per_1m: 12.00
+      billing: paid           # no free tier for this model
+      params:
+        temperature: null     # Gemini 3+ deprecates sampling params; omit it
+    fallback:
+      model: openrouter/anthropic/claude-sonnet-4.5
+      provider: openrouter
+      input_per_1m: 3.00
+      output_per_1m: 15.00
+      billing: paid
+
+  mid:
+    primary:
+      model: gemini/gemini-3.8-flash
+      provider: gemini
+      input_per_1m: 0.75      # rises to 1.50 / 7.50 on 2027-01-01
+      output_per_1m: 3.75
+      billing: free           # set to "paid" if you've enabled billing
+      params:
+        temperature: null
+    fallback:
+      model: openrouter/meta-llama/llama-3.3-70b-instruct
+      provider: openrouter
+      input_per_1m: 0.10
+      output_per_1m: 0.32
+      billing: paid
+
+  lightweight:
+    primary:
+      model: ollama/llama3.2:3b
+      provider: ollama
+      input_per_1m: 0.0
+      output_per_1m: 0.0
+      billing: local
+    fallback:
+      model: openrouter/meta-llama/llama-3.2-3b-instruct
+      provider: openrouter
+      input_per_1m: 0.05
+      output_per_1m: 0.33
+      billing: paid

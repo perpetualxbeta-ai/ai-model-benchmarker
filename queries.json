@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "description": "20 standardized enterprise queries across 4 categories. The `expected` blocks are not scored in Week 1; they are reference data for the Week 2 scorers.",
+  "default_system_prompt": "You are a precise assistant for enterprise workflows. Follow the output format exactly and do not add commentary unless asked.",
+  "queries": [
+    {
+      "id": "sum-01",
+      "category": "summarization",
+      "title": "Incident postmortem",
+      "prompt": "Summarize the following incident report in exactly 3 bullet points covering impact, root cause, and follow-up actions.\n\nIncident INC-4471 (2026-10-14): Between 09:12 and 10:47 SGT, roughly 18% of checkout requests in the APAC region failed with HTTP 503. The payments service exhausted its database connection pool after a config deploy reduced max_connections from 200 to 20; the change was meant for the staging environment only. On-call engineers rolled back the config at 10:31 and error rates returned to baseline by 10:47. Estimated lost revenue is SGD 42,000. Follow-ups: add environment validation to the config pipeline, alert when pool utilization exceeds 85%, and require a second approver for production config changes.",
+      "expected": {
+        "format": "3 bullet points",
+        "must_mention": ["503", "connection pool", "staging", "rollback", "second approver"]
+      }
+    },
+    {
+      "id": "sum-02",
+      "category": "summarization",
+      "title": "Meeting transcript to decisions",
+      "prompt": "Extract the decisions and action items (with owners and due dates) from this meeting transcript. Respond with two headed lists: 'Decisions' and 'Action items'.\n\nPriya: We're agreed the Q1 launch moves from Jan 15 to Feb 3, mainly because the SOC 2 audit isn't closing until late January.\nMarcus: Yes. I'll update the customer comms and send them by Friday, Nov 7.\nPriya: Lena, can you re-plan the beta cohort? We still want 40 design partners.\nLena: Sure, I'll have the revised list by Nov 12.\nMarcus: And we're dropping the on-prem SKU from the launch entirely; we'll revisit in Q2.\nPriya: Agreed. I'll brief the board on Nov 10.",
+      "expected": {
+        "decisions": ["Launch moves from Jan 15 to Feb 3", "On-prem SKU dropped from launch, revisit Q2"],
+        "action_items": [
+          {"owner": "Marcus", "task": "Update and send customer comms", "due": "Nov 7"},
+          {"owner": "Lena", "task": "Revised beta cohort list (40 design partners)", "due": "Nov 12"},
+          {"owner": "Priya", "task": "Brief the board", "due": "Nov 10"}
+        ]
+      }
+    },
+    {
+      "id": "sum-03",
+      "category": "summarization",
+      "title": "Policy change for employees",
+      "prompt": "Rewrite this policy update as a plain-language summary for employees in no more than 60 words.\n\nEffective 1 December 2026, the Travel & Expense Policy (TEP-v7) is amended as follows: (a) economy class is mandatory for all flights under 6 hours irrespective of grade; (b) premium economy is permitted for flights of 6 hours or more for grades M3 and above; (c) hotel nightly caps are revised to SGD 280 for Singapore and USD 250 for all other locations; (d) expense claims must be submitted within 30 calendar days of the trip end date, after which claims require VP approval.",
+      "expected": {
+        "max_words": 60,
+        "must_mention": ["1 December", "economy", "6 hours", "M3", "280", "250", "30 days"]
+      }
+    },
+    {
+      "id": "sum-04",
+      "category": "summarization",
+      "title": "Customer feedback themes",
+      "prompt": "Identify the top 3 themes in this customer feedback and give a one-sentence description of each, ordered by frequency.\n\n1. \"The SSO setup took us two weeks, documentation was outdated.\"\n2. \"Love the dashboards, but exports to Excel break with large datasets.\"\n3. \"Okta integration was painful; your guide references old screens.\"\n4. \"Pricing jumped 30% at renewal without much notice.\"\n5. \"CSV export times out above 100k rows.\"\n6. \"Support was quick, but the SAML docs are wrong.\"\n7. \"Renewal quote was a shock; we need more lead time on price changes.\"\n8. \"Export to Excel loses formatting and fails on big reports.\"",
+      "expected": {
+        "themes_in_order": ["SSO/SAML setup and outdated docs (3)", "Large-data export failures (3)", "Renewal price increases with little notice (2)"]
+      }
+    },
+    {
+      "id": "sum-05",
+      "category": "summarization",
+      "title": "Executive one-liner from quarterly memo",
+      "prompt": "Write a single-sentence executive summary (max 35 words) of this memo.\n\nQ3 FY26 results: revenue was USD 18.4M, up 22% year over year, driven by enterprise expansion (net revenue retention 124%). Gross margin fell 3 points to 71% due to higher inference compute costs from the new AI assistant feature. Operating cash flow turned positive for the first time at USD 1.1M. Headcount grew from 182 to 196. Management expects compute costs per user to fall 30% in Q4 after migrating to a cheaper model tier.",
+      "expected": {
+        "max_words": 35,
+        "must_mention": ["18.4", "22%", "margin", "cash flow"]
+      }
+    },
+    {
+      "id": "json-01",
+      "category": "json_extraction",
+      "title": "Invoice email",
+      "prompt": "Extract the invoice details from this email as JSON with keys: vendor (string), invoice_number (string), invoice_date (YYYY-MM-DD), due_date (YYYY-MM-DD), currency (ISO 4217 code), total_amount (number), po_number (string or null). Return only the JSON object.\n\nHi AP team, please find attached invoice #INV-2026-0918 from Northwind Logistics Pte Ltd dated 3 Oct 2026 for freight services on PO-55120. The total due is S$12,480.50, payable within 30 days (by 2 Nov 2026). Thanks, Grace",
+      "expected": {
+        "json": {
+          "vendor": "Northwind Logistics Pte Ltd",
+          "invoice_number": "INV-2026-0918",
+          "invoice_date": "2026-10-03",
+          "due_date": "2026-11-02",
+          "currency": "SGD",
+          "total_amount": 12480.5,
+          "po_number": "PO-55120"
+        }
+      }
+    },
+    {
+      "id": "json-02",
+      "category": "json_extraction",
+      "title": "Support ticket triage",
+      "prompt": "Convert this support ticket into JSON with keys: customer_name, account_id, product, severity (one of: low, medium, high, critical), issue_summary (max 15 words), requested_action. Return only the JSON object.\n\nFrom: Daniel Okafor (Acct #A-90213)\nSubject: URGENT - Data sync down for all users\nBody: Since this morning none of our 300 users can sync with the Analytics Cloud connector. Our month-end close is tomorrow. Please escalate to engineering and call me on my mobile.",
+      "expected": {
+        "json": {
+          "customer_name": "Daniel Okafor",
+          "account_id": "A-90213",
+          "product": "Analytics Cloud",
+          "severity": "critical",
+          "requested_action": "Escalate to engineering and call customer"
+        },
+        "exact_keys": ["customer_name", "account_id", "product", "severity", "issue_summary", "requested_action"]
+      }
+    },
+    {
+      "id": "json-03",
+      "category": "json_extraction",
+      "title": "Candidate profile",
+      "prompt": "Extract a JSON object with keys: full_name, email, years_experience (integer), current_title, skills (array of strings, lowercase), languages (array of strings). Return only the JSON object.\n\nMEI LIN TAN | mei.tan@example.com | Singapore\nSenior Data Engineer at Fintra (2022-present). Previously Data Engineer at Grablet (2018-2022) and Analyst at DBX Bank (2016-2018). Total 10 years of experience.\nSkills: Python, Spark, Airflow, dbt, Snowflake.\nLanguages: English, Mandarin, Malay.",
+      "expected": {
+        "json": {
+          "full_name": "Mei Lin Tan",
+          "email": "mei.tan@example.com",
+          "years_experience": 10,
+          "current_title": "Senior Data Engineer",
+          "skills": ["python", "spark", "airflow", "dbt", "snowflake"],
+          "languages": ["English", "Mandarin", "Malay"]
+        }
+      }
+    },
+    {
+      "id": "json-04",
+      "category": "json_extraction",
+      "title": "Contract clause terms",
+      "prompt": "Extract the commercial terms from this clause as JSON with keys: term_months (integer), auto_renew (boolean), renewal_term_months (integer or null), notice_period_days (integer), annual_fee (number), currency (ISO 4217), price_cap_percent (number or null). Return only the JSON object.\n\nClause 7. The Initial Term is twenty-four (24) months from the Effective Date. Thereafter this Agreement renews automatically for successive twelve (12) month periods unless either party gives written notice of non-renewal at least ninety (90) days before the end of the then-current term. The annual subscription fee is EUR 84,000, and any increase upon renewal shall not exceed five percent (5%).",
+      "expected": {
+        "json": {
+          "term_months": 24,
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 90,
+          "annual_fee": 84000,
+          "currency": "EUR",
+          "price_cap_percent": 5
+        }
+      }
+    },
+    {
+      "id": "json-05",
+      "category": "json_extraction",
+      "title": "Purchase order line items",
+      "prompt": "Extract the line items from this purchase order as a JSON array of objects with keys: sku, description, quantity (integer), unit_price (number), line_total (number). Compute line_total = quantity * unit_price. Return only the JSON array.\n\nPO-7781 | Supplier: Apex Office Supply\n- SKU CH-200, Ergonomic chair, qty 12 @ $189.00\n- SKU DK-140, Standing desk 140cm, qty 12 @ $425.50\n- SKU MN-27Q, 27\" QHD monitor, qty 24 @ $219.99",
+      "expected": {
+        "json": [
+          {"sku": "CH-200", "description": "Ergonomic chair", "quantity": 12, "unit_price": 189.0, "line_total": 2268.0},
+          {"sku": "DK-140", "description": "Standing desk 140cm", "quantity": 12, "unit_price": 425.5, "line_total": 5106.0},
+          {"sku": "MN-27Q", "description": "27\" QHD monitor", "quantity": 24, "unit_price": 219.99, "line_total": 5279.76}
+        ]
+      }
+    },
+    {
+      "id": "reason-01",
+      "category": "logical_reasoning",
+      "title": "Meeting slot constraints",
+      "prompt": "Three meetings (A, B, C) must be scheduled in the 9:00, 10:00 and 11:00 slots, one per slot. Meeting A cannot be at 9:00. Meeting C must be immediately after meeting B. What time is each meeting? Show your reasoning briefly, then give the final answer on the last line as 'A=HH:MM, B=HH:MM, C=HH:MM'.",
+      "expected": {"final_answer": "A=11:00, B=09:00, C=10:00"}
+    },
+    {
+      "id": "reason-02",
+      "category": "logical_reasoning",
+      "title": "Annual licence cost",
+      "prompt": "A SaaS plan costs USD 40 per seat per month. Annual billing gets a 15% discount on the full year. A team of 12 seats chooses annual billing. What is the total annual cost? Show your working briefly, then give the final answer on the last line as a number only.",
+      "expected": {"final_answer": "4896"}
+    },
+    {
+      "id": "reason-03",
+      "category": "logical_reasoning",
+      "title": "SLA breach",
+      "prompt": "A service has a 99.9% monthly uptime SLA, measured over a 30-day month. In October it had a single outage lasting 50 minutes. Was the SLA breached, and by how many minutes over (or under) the allowed downtime? Show your working briefly, then give the final answer on the last line as 'BREACHED by X minutes' or 'MET with X minutes to spare'.",
+      "expected": {"final_answer": "BREACHED by 6.8 minutes", "allowed_downtime_minutes": 43.2}
+    },
+    {
+      "id": "reason-04",
+      "category": "logical_reasoning",
+      "title": "Vendor syllogism",
+      "prompt": "Facts: (1) All approved vendors have passed a security review. (2) Some vendors that passed a security review are based in the EU. (3) Vendor Q is approved.\nQuestion 1: Can we conclude that Vendor Q passed a security review?\nQuestion 2: Can we conclude that Vendor Q is based in the EU?\nAnswer each with Yes or No and a one-sentence justification. Give the final answer on the last line as 'Q1=Yes|No, Q2=Yes|No'.",
+      "expected": {"final_answer": "Q1=Yes, Q2=No"}
+    },
+    {
+      "id": "reason-05",
+      "category": "logical_reasoning",
+      "title": "Invoice due date",
+      "prompt": "An invoice dated 28 March 2026 has payment terms of Net 45 (due 45 calendar days after the invoice date). What is the due date? Show your working briefly, then give the final answer on the last line in YYYY-MM-DD format.",
+      "expected": {"final_answer": "2026-05-12"}
+    },
+    {
+      "id": "code-01",
+      "category": "code_generation",
+      "title": "Business days between dates",
+      "prompt": "Write a Python 3.11 function `business_days_between(start: date, end: date, holidays: set[date]) -> int` that counts weekdays (Mon-Fri) from `start` inclusive to `end` exclusive, skipping any dates in `holidays`. Return 0 if end <= start. Use only the standard library. Return only the code in a single ```python block.",
+      "expected": {
+        "language": "python",
+        "entrypoint": "business_days_between",
+        "tests": [
+          {"args": ["2026-11-02", "2026-11-06", []], "result": 4},
+          {"args": ["2026-11-02", "2026-11-06", ["2026-11-03"]], "result": 3},
+          {"args": ["2026-11-06", "2026-11-09", []], "result": 1},
+          {"args": ["2026-11-09", "2026-11-02", []], "result": 0}
+        ]
+      }
+    },
+    {
+      "id": "code-02",
+      "category": "code_generation",
+      "title": "Top customers per region (SQL)",
+      "prompt": "Given PostgreSQL tables customers(id, name, region) and orders(id, customer_id, amount numeric, created_at timestamptz), write a single SQL query that returns the top 3 customers by total order amount in each region over the last 90 days, with columns region, customer_name, total_amount, rank. Ties should share a rank. Return only the SQL in a single ```sql block.",
+      "expected": {
+        "language": "sql",
+        "must_contain_any": [["RANK()", "DENSE_RANK()"], ["PARTITION BY"], ["INTERVAL '90 days'", "interval '90 days'", "INTERVAL '90 day'"]]
+      }
+    },
+    {
+      "id": "code-03",
+      "category": "code_generation",
+      "title": "Deduplicate customer records",
+      "prompt": "Write a Python 3.11 function `dedupe_by_email(records: list[dict]) -> list[dict]` where each record has keys 'email' (str) and 'updated_at' (ISO 8601 str). Emails match case-insensitively and ignoring surrounding whitespace. Keep only the most recently updated record for each email, preserving the order in which each email first appears. Return only the code in a single ```python block.",
+      "expected": {
+        "language": "python",
+        "entrypoint": "dedupe_by_email",
+        "tests": [
+          {
+            "args": [[
+              {"email": "A@x.com", "updated_at": "2026-01-01T00:00:00", "id": 1},
+              {"email": "b@x.com", "updated_at": "2026-02-01T00:00:00", "id": 2},
+              {"email": " a@x.com ", "updated_at": "2026-03-01T00:00:00", "id": 3}
+            ]],
+            "result_ids": [3, 2]
+          }
+        ]
+      }
+    },
+    {
+      "id": "code-04",
+      "category": "code_generation",
+      "title": "Async retry decorator",
+      "prompt": "Write a Python 3.11 decorator `retry_async(max_attempts: int = 3, base_delay: float = 0.5, exceptions: tuple[type[BaseException], ...] = (Exception,))` for async functions. It retries on the given exceptions with exponential backoff (base_delay * 2**(attempt-1)) plus up to 10% random jitter, and re-raises the last exception after max_attempts. Preserve the wrapped function's metadata and add type hints. Return only the code in a single ```python block.",
+      "expected": {
+        "language": "python",
+        "entrypoint": "retry_async",
+        "must_contain": ["functools.wraps", "asyncio.sleep"]
+      }
+    },
+    {
+      "id": "code-05",
+      "category": "code_generation",
+      "title": "PII masking",
+      "prompt": "Write a Python 3.11 function `mask_pii(text: str) -> str` that replaces email addresses with '[EMAIL]' and phone numbers (international format like +65 9123 4567 or +1 415-555-0100) with '[PHONE]'. Leave all other text unchanged. Use the `re` module. Return only the code in a single ```python block.",
+      "expected": {
+        "language": "python",
+        "entrypoint": "mask_pii",
+        "tests": [
+          {"args": ["Contact jane.doe@acme.com or +1 415-555-0100 today."], "result": "Contact [EMAIL] or [PHONE] today."},
+          {"args": ["Call +65 9123 4567 re: order 12345."], "result": "Call [PHONE] re: order 12345."}
+        ]
+      }
+    }
+  ]
+}

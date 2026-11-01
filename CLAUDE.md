@@ -42,26 +42,24 @@ Pin dependencies in `requirements.txt` (or `pyproject.toml`). Tests use `pytest`
 - **Reproducibility:** fixed `temperature=0` (unless a task specifies otherwise), a `--seed` where supported, N repeat runs per prompt, and every result row tagged with timestamp, model, provider, and run ID.
 - Docstrings on public functions; comments explain *why*, not *what*.
 
-## Suggested Layout
+## Layout
 
 ```
-benchmarker/
-  config.py        # load .env + models/pricing config
-  clients.py       # async streaming client wrapper (litellm), returns timing + usage
-  metrics.py       # TTFT, latency, throughput, cost-per-1k calculations
-  scoring.py       # exact match, regex, LLM-as-judge
-  runner.py        # orchestrates tasks × models × repeats with concurrency limits
-  report.py        # pandas aggregation + rich tables, CSV/JSON export
-  cli.py           # entry point (model/task/runs selection)
-tasks/             # benchmark prompt sets (JSON/YAML)
-config/models.yaml # model IDs + per-1M-token input/output prices
+benchmarker.py     # CLI + orchestration: tier resolution, async runner, rich tables, CSV export
+metrics.py         # streamed request timing (TTFT, latency, throughput), token usage, cost math
+queries.json       # 20 enterprise queries; `expected` blocks are reference data for Week 2 scoring
+config/models.yaml # model tiers, fallbacks, per-1M-token prices, billing mode, per-model params
 results/           # run outputs (gitignored)
 tests/
 ```
 
+As the project grows (scoring, reporting), split into a `benchmarker/` package with `scoring.py` and `report.py`.
+
 ## Workflow Notes
 
 - Set up: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cp .env.example .env`
+- Check before committing: `pytest && ruff check . && mypy benchmarker.py metrics.py`
+- Gemini 3+ models deprecate sampling params; their `params` in `config/models.yaml` set `temperature: null` so it isn't sent.
 - Never print or log API keys; redact them in error messages.
 - Add `results/` to `.gitignore` before committing any benchmark output.
 - When changing metric definitions, update this file and the README so reported numbers stay comparable across runs.

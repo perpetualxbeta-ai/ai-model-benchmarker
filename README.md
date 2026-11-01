@@ -54,8 +54,37 @@ source venv/bin/activate
 cp .env.example .env   # then add your API keys
 ```
 
-For local models, install [Ollama](https://ollama.com) and pull a model, e.g. `ollama pull llama3`.
+For local models, install [Ollama](https://ollama.com) and pull the lightweight-tier model: `ollama pull llama3.2:3b`.
+
+## Running the Benchmark
+
+```bash
+pip install -r requirements.txt
+
+python benchmarker.py --dry-run          # mocked responses, checks the pipeline without API calls
+python benchmarker.py                    # all 3 tiers x 20 queries
+python benchmarker.py --runs 3           # repeat each query for variance
+python benchmarker.py --tiers mid lightweight --categories code_generation --limit 2
+python benchmarker.py --sequential       # one request at a time for the cleanest latency numbers
+```
+
+Model tiers, fallbacks and per-1M-token prices live in `config/models.yaml`. Each tier uses its
+primary model when the key is set and a warm-up request succeeds, otherwise its OpenRouter fallback.
+
+| Tier        | Primary                         | Fallback                                     |
+|-------------|---------------------------------|----------------------------------------------|
+| Frontier    | `gemini/gemini-3.1-pro-preview` | `openrouter/anthropic/claude-sonnet-4.5`     |
+| Mid         | `gemini/gemini-3.8-flash`       | `openrouter/meta-llama/llama-3.3-70b-instruct` |
+| Lightweight | `ollama/llama3.2:3b`            | `openrouter/meta-llama/llama-3.2-3b-instruct` |
+
+Outputs go to `results/`:
+
+- `benchmark_results.csv` — one row per model: TTFT and latency (mean/p50/p95), tokens/sec, token usage, cost per 1,000 queries (billed and list price)
+- `benchmark_runs.csv` — one row per request
+- `responses.jsonl` — raw model outputs, for Week 2 scoring
+
+Run the tests with `pytest`.
 
 ## Project Status
 
-🚧 Week 1 — initial setup complete.
+✅ Week 1 — async pipeline measuring TTFT, latency, tokens and cost across 3 model tiers.

@@ -9,3 +9,11 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Benchmark outputs
+results/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
