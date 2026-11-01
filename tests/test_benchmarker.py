@@ -83,3 +83,13 @@ async def test_one_failing_request_does_not_abort_run(monkeypatch: pytest.Monkey
     assert by_id["ok"].error is None and by_id["ok"].latency_s is not None
     assert by_id["bad"].error is not None and "provider exploded" in by_id["bad"].error
     assert len(responses) == 1
+
+
+def test_free_only_drops_paid_models() -> None:
+    import yaml
+
+    raw = yaml.safe_load((ROOT / "config" / "models.yaml").read_text())
+    candidates = benchmarker.load_tier_candidates(raw, ["frontier", "mid", "lightweight"], free_only=True)
+    assert "frontier" not in candidates
+    assert [m.model for m in candidates["mid"]] == ["gemini/gemini-3.8-flash"]
+    assert [m.model for m in candidates["lightweight"]] == ["ollama/llama3.2:3b"]

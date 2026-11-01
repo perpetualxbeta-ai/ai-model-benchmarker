@@ -62,6 +62,7 @@ For local models, install [Ollama](https://ollama.com) and pull the lightweight-
 pip install -r requirements.txt
 
 python benchmarker.py --dry-run          # mocked responses, checks the pipeline without API calls
+python benchmarker.py --free-only        # free-tier Gemini Flash + local Ollama only, never bills
 python benchmarker.py                    # all 3 tiers x 20 queries
 python benchmarker.py --runs 3           # repeat each query for variance
 python benchmarker.py --tiers mid lightweight --categories code_generation --limit 2

@@ -152,14 +152,26 @@ def _model_from_raw(tier: str, raw: dict[str, Any]) -> ModelConfig:
     )
 
 
-def load_tier_candidates(raw: dict[str, Any], tiers: Sequence[str]) -> dict[str, list[ModelConfig]]:
-    """Primary then fallback model for each requested tier."""
+def load_tier_candidates(
+    raw: dict[str, Any], tiers: Sequence[str], *, free_only: bool = False
+) -> dict[str, list[ModelConfig]]:
+    """Primary then fallback model for each requested tier.
+
+    With ``free_only``, paid models are dropped so a missing key or a stopped
+    Ollama can never fall back to something that bills.
+    """
     candidates: dict[str, list[ModelConfig]] = {}
     for tier in tiers:
         spec = raw["tiers"].get(tier)
         if spec is None:
             raise SystemExit(f"Unknown tier {tier!r}; config has {', '.join(raw['tiers'])}")
-        candidates[tier] = [_model_from_raw(tier, spec[slot]) for slot in ("primary", "fallback") if spec.get(slot)]
+        models = [_model_from_raw(tier, spec[slot]) for slot in ("primary", "fallback") if spec.get(slot)]
+        if free_only:
+            models = [m for m in models if m.pricing.billing != "paid"]
+            if not models:
+                console.print(f"  [dim]•[/] {tier}: no free or local model configured, skipped (--free-only)")
+                continue
+        candidates[tier] = models
     return candidates
 
 
@@ -549,6 +561,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--retries", type=int, default=3, help="Retries for transient errors.")
     parser.add_argument("--seed", type=int, help="Sampling seed, where the provider supports it.")
     parser.add_argument("--sequential", action="store_true", help="One request at a time for the cleanest latency.")
+    parser.add_argument(
+        "--free-only", action="store_true", help="Only use free-tier and local models; never fall back to paid ones."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Use mocked responses; no API calls or keys needed.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--queries", type=Path, default=DEFAULT_QUERIES)
@@ -588,7 +603,7 @@ async def main_async(args: argparse.Namespace) -> int:
     console.print(f"{len(queries)} queries x {args.runs} run(s) · pricing as of {raw_config.get('last_updated', '?')}")
     console.print("Resolving model tiers:")
 
-    candidates = load_tier_candidates(raw_config, args.tiers)
+    candidates = load_tier_candidates(raw_config, args.tiers, free_only=args.free_only)
     selected = await resolve_models(candidates, providers, settings)
     if not selected:
         console.print("[red]No models available. Check your .env keys and that Ollama is running.[/]")
