@@ -82,6 +82,7 @@ Outputs go to `results/`:
 - `benchmark_results.csv` — one row per model: TTFT and latency (mean/p50/p95), tokens/sec, token usage, cost per 1,000 queries (billed and list price)
 - `benchmark_runs.csv` — one row per request
 - `responses.jsonl` — raw model outputs, for Week 2 scoring
+- `SUMMARY.md` — findings report generated from the run (the only results file committed to git; dry runs write `SUMMARY.dry-run.md` instead)
 
 Run the tests with `pytest`.
 

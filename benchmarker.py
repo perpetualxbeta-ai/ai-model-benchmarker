@@ -46,6 +46,7 @@ from metrics import (
     stream_completion,
     summarize,
 )
+from report import RunMeta, write_summary
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = ROOT / "config" / "models.yaml"
@@ -607,9 +608,21 @@ async def main_async(args: argparse.Namespace) -> int:
     render_errors(runs_df)
 
     paths = write_outputs(runs_df, summary_df, responses, args.output_dir)
+    meta = RunMeta(
+        run_id=run_id,
+        generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        query_count=len(queries),
+        runs_per_query=args.runs,
+        categories=tuple(dict.fromkeys(q.category for q in queries)),
+        pricing_date=str(raw_config.get("last_updated", "unknown")),
+        dry_run=args.dry_run,
+        sequential=args.sequential,
+    )
+    report_path = write_summary(summary_df, runs_df, meta, args.output_dir)
     summary_path = paths["summary"]
     shown = summary_path.relative_to(ROOT) if summary_path.is_relative_to(ROOT) else summary_path
     console.print(f"\nSummary CSV: [bold]{shown}[/]")
+    console.print(f"Findings report: [bold]{report_path.name}[/]")
     console.print(f"[dim]Per-request rows: {paths['runs'].name} · Raw responses: {paths['responses'].name}[/]")
     return 0
 

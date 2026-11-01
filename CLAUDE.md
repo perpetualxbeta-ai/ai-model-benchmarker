@@ -47,19 +47,20 @@ Pin dependencies in `requirements.txt` (or `pyproject.toml`). Tests use `pytest`
 ```
 benchmarker.py     # CLI + orchestration: tier resolution, async runner, rich tables, CSV export
 metrics.py         # streamed request timing (TTFT, latency, throughput), token usage, cost math
+report.py          # results/SUMMARY.md findings report, derived only from measured numbers
 queries.json       # 20 enterprise queries; `expected` blocks are reference data for Week 2 scoring
 config/models.yaml # model tiers, fallbacks, per-1M-token prices, billing mode, per-model params
-results/           # run outputs (gitignored)
+results/           # run outputs (gitignored except SUMMARY.md)
 tests/
 ```
 
-As the project grows (scoring, reporting), split into a `benchmarker/` package with `scoring.py` and `report.py`.
+As the project grows (Week 2 scoring), split into a `benchmarker/` package with `scoring.py`.
 
 ## Workflow Notes
 
 - Set up: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cp .env.example .env`
-- Check before committing: `pytest && ruff check . && mypy benchmarker.py metrics.py`
+- Check before committing: `pytest && ruff check . && mypy benchmarker.py metrics.py report.py`
 - Gemini 3+ models deprecate sampling params; their `params` in `config/models.yaml` set `temperature: null` so it isn't sent.
 - Never print or log API keys; redact them in error messages.
-- Add `results/` to `.gitignore` before committing any benchmark output.
+- Only `results/SUMMARY.md` is committed; raw CSVs and responses stay local. Never commit a summary from a dry run — its numbers are mocked.
 - When changing metric definitions, update this file and the README so reported numbers stay comparable across runs.
