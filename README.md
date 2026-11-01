@@ -20,7 +20,7 @@ A hands-on project for comparing large language models across hosted APIs (OpenA
 
 ### Week 1 — Foundations & Provider Clients
 - Set up project structure, virtual environment, and configuration (`.env`)
-- Build a common client interface with adapters for OpenAI, Anthropic, OpenRouter, and Ollama
+- Build a common client interface with adapters for Gemini, OpenRouter, and Ollama
 - Send a single prompt to every provider and log raw responses, token usage, and timing
 - **Deliverable:** one script that queries all providers with the same prompt
 
