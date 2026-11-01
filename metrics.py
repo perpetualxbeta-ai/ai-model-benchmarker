@@ -16,6 +16,10 @@ import pandas as pd
 
 Billing = Literal["paid", "free", "local"]
 
+# Fewer content chunks than this means the answer arrived in a burst (e.g. a
+# provider buffered it), so there's no generation window to measure speed over.
+MIN_STREAM_CHUNKS = 3
+
 
 @dataclass(slots=True, frozen=True)
 class Pricing:
@@ -37,15 +41,33 @@ class RequestMetrics:
     total_tokens: int
     usage_estimated: bool = False
     reasoning_tokens: int = 0
+    content_chunks: int = 0
+
+    @property
+    def visible_tokens(self) -> int:
+        """Output tokens the user actually sees (completion minus hidden reasoning)."""
+        return max(self.completion_tokens - self.reasoning_tokens, 0)
+
+    @property
+    def generation_s(self) -> float | None:
+        """Time from the first visible token to the end of the stream."""
+        if self.ttft_s is None or self.content_chunks < MIN_STREAM_CHUNKS:
+            return None
+        window = self.latency_s - self.ttft_s
+        return window if window > 0 else None
 
     @property
     def output_tokens_per_s(self) -> float | None:
-        """Decode throughput: completion tokens over the time after the first token."""
-        if self.ttft_s is None or self.completion_tokens <= 0:
+        """Streaming speed: visible tokens over the time after the first token.
+
+        Reasoning tokens are excluded because thinking models generate them
+        before the first visible token, outside this window; counting them
+        would report thousands of tokens/s.
+        """
+        window = self.generation_s
+        if window is None or self.visible_tokens <= 0:
             return None
-        generation_s = self.latency_s - self.ttft_s
-        # A single-chunk response has no measurable generation window.
-        return self.completion_tokens / generation_s if generation_s > 0 else None
+        return self.visible_tokens / window
 
 
 @dataclass(slots=True)
@@ -96,6 +118,7 @@ async def stream_completion(
     kwargs.setdefault("stream_options", {"include_usage": True})
 
     parts: list[str] = []
+    content_chunks = 0
     ttft_s: float | None = None
     usage: Any = None
     finish_reason: str | None = None
@@ -108,6 +131,7 @@ async def stream_completion(
             if ttft_s is None:
                 ttft_s = time.perf_counter() - start
             parts.append(text)
+            content_chunks += 1
         finish_reason = _chunk_finish_reason(chunk) or finish_reason
         chunk_usage = getattr(chunk, "usage", None)
         if chunk_usage is not None:
@@ -138,6 +162,7 @@ async def stream_completion(
             total_tokens=total_tokens,
             usage_estimated=estimated,
             reasoning_tokens=_reasoning_tokens(usage) if usage is not None else 0,
+            content_chunks=content_chunks,
         ),
     )
 
@@ -180,7 +205,13 @@ def summarize(runs: pd.DataFrame, pricing_by_model: dict[str, Pricing]) -> pd.Da
         avg_completion = float(ok["completion_tokens"].mean()) if len(ok) else 0.0
         ttft = ok["ttft_s"].dropna()
         latency = ok["latency_s"]
-        tps = ok["output_tokens_per_s"].dropna()
+        streamed = ok[ok["output_tokens_per_s"].notna()]
+        reasoning = streamed.get("reasoning_tokens", 0)
+        window = (streamed["latency_s"] - streamed["ttft_s"]).sum()
+        # Pooled tokens / pooled time: a mean of per-request ratios lets one
+        # short burst dominate the figure.
+        tps = float((streamed["completion_tokens"] - reasoning).sum() / window) if window > 0 else None
+        avg_reasoning = float(ok["reasoning_tokens"].mean()) if len(ok) and "reasoning_tokens" in ok else 0.0
         rows.append(
             {
                 "tier": tier,
@@ -195,9 +226,10 @@ def summarize(runs: pd.DataFrame, pricing_by_model: dict[str, Pricing]) -> pd.Da
                 "latency_p50_s": latency.quantile(0.5) if len(latency) else None,
                 "latency_p95_s": latency.quantile(0.95) if len(latency) else None,
                 "latency_stdev_s": latency.std() if len(latency) > 1 else None,
-                "output_tokens_per_s": tps.mean() if len(tps) else None,
+                "output_tokens_per_s": tps,
                 "avg_prompt_tokens": avg_prompt,
                 "avg_completion_tokens": avg_completion,
+                "avg_reasoning_tokens": avg_reasoning,
                 "avg_total_tokens": float(ok["total_tokens"].mean()) if len(ok) else 0.0,
                 "total_tokens": int(ok["total_tokens"].sum()),
                 "usage_estimated": bool(ok["usage_estimated"].any()) if len(ok) else False,

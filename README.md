@@ -76,7 +76,7 @@ primary model when the key is set and a warm-up request succeeds, otherwise its 
 |-------------|---------------------------------|----------------------------------------------|
 | Frontier    | `gemini/gemini-3.1-pro-preview` | `openrouter/anthropic/claude-sonnet-4.5`     |
 | Mid         | `gemini/gemini-3.8-flash`       | `openrouter/meta-llama/llama-3.3-70b-instruct` |
-| Lightweight | `ollama/llama3.2:3b`            | `openrouter/meta-llama/llama-3.2-3b-instruct` |
+| Lightweight | `ollama_chat/llama3.2:3b`       | `openrouter/meta-llama/llama-3.2-3b-instruct` |
 
 Outputs go to `results/`:
 

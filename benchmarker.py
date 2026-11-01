@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import sys
 import uuid
 from collections.abc import Sequence
@@ -76,6 +77,7 @@ class ProviderConfig:
     env_key: str | None = None
     env_base_url: str | None = None
     default_base_url: str | None = None
+    warm_up: bool = True
 
 
 @dataclass(slots=True, frozen=True)
@@ -130,6 +132,7 @@ def load_providers(raw: dict[str, Any]) -> dict[str, ProviderConfig]:
             env_key=cfg.get("env_key"),
             env_base_url=cfg.get("env_base_url"),
             default_base_url=cfg.get("default_base_url"),
+            warm_up=bool(cfg.get("warm_up", True)),
         )
         for name, cfg in raw["providers"].items()
     }
@@ -267,23 +270,76 @@ def request_kwargs(model: ModelConfig, base: dict[str, Any], settings: Settings,
     return kwargs
 
 
+# Provider-suggested waits longer than this aren't worth blocking the run for.
+MAX_RETRY_WAIT_S = 90.0
+_RETRY_HINT = re.compile(r"(?:retry in|retryDelay\W+)\s*([\d.]+)\s*s", re.IGNORECASE)
+_DAILY_QUOTA = re.compile(r"per\s*_?day", re.IGNORECASE)
+
+
+class _Skipped(Exception):
+    """Internal signal: don't send this request."""
+
+
+class RequestFailed(Exception):
+    """A request that failed after `retries` retries; `cause` is the last provider error."""
+
+    def __init__(self, cause: BaseException, retries: int) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.retries = retries
+
+
+def is_rate_limit(exc: BaseException) -> bool:
+    # litellm sometimes wraps a 429 as MidStreamFallbackError (a 503 subclass)
+    # or BadRequestError, so the status in the message is the reliable signal.
+    text = str(exc)
+    return isinstance(exc, RateLimitError) or getattr(exc, "status_code", None) == 429 or '"code": 429' in text
+
+
+def is_daily_quota(exc: BaseException) -> bool:
+    """A per-day quota won't reset during the run, so retrying only wastes requests."""
+    return is_rate_limit(exc) and bool(_DAILY_QUOTA.search(str(exc)))
+
+
+def retry_delay(exc: BaseException, attempt: int) -> float | None:
+    """Seconds to wait before retrying `exc`, or None if it shouldn't be retried."""
+    if is_rate_limit(exc):
+        if is_daily_quota(exc):
+            return None
+        hint = _RETRY_HINT.search(str(exc))
+        wait = float(hint.group(1)) if hint else 2.0 ** (attempt + 3)
+        return wait if wait <= MAX_RETRY_WAIT_S else None
+    if isinstance(exc, RETRYABLE_ERRORS):
+        return min(30.0, 2.0 ** (attempt + 2))
+    return None
+
+
+def clean_error(exc: BaseException) -> str:
+    """One readable line: drops litellm's repeated 'Original exception' tail and escaped newlines."""
+    text = f"{type(exc).__name__}: {exc}".split(" Original exception:")[0]
+    text = text.replace("\\n", " ").replace("\n", " ")
+    return re.sub(r"\s+", " ", text).strip()[:1200]
+
+
 async def timed_request(
     model: ModelConfig, messages: list[dict[str, str]], kwargs: dict[str, Any], max_retries: int
 ) -> tuple[StreamResult, int]:
     """Stream one completion, retrying transient errors.
 
     Only the successful attempt is timed; backoff sleeps happen outside the
-    measured window and are reported as a retry count instead.
+    measured window and are reported as a retry count instead. Rate limits
+    wait as long as the provider asks; daily quotas are not retried.
     """
     attempt = 0
     while True:
         try:
             return await stream_completion(model.model, messages, **kwargs), attempt
-        except RETRYABLE_ERRORS:
-            if attempt >= max_retries:
-                raise
+        except Exception as exc:
+            delay = retry_delay(exc, attempt) if attempt < max_retries else None
+            if delay is None:
+                raise RequestFailed(exc, attempt) from exc
             attempt += 1
-            await asyncio.sleep(min(30.0, 2.0**attempt) * (1 + random.uniform(0, 0.1)))
+            await asyncio.sleep(delay * (1 + random.uniform(0, 0.1)))
 
 
 async def warm_up(model: ModelConfig, base: dict[str, Any], settings: Settings) -> str | None:
@@ -292,8 +348,8 @@ async def warm_up(model: ModelConfig, base: dict[str, Any], settings: Settings) 
     kwargs = request_kwargs(model, base, settings, "warmup") | {"max_tokens": 16}
     try:
         await timed_request(model, build_messages(probe), kwargs, max_retries=1)
-    except Exception as exc:  # any failure means "use the fallback"
-        return f"{type(exc).__name__}: {exc}"
+    except RequestFailed as failed:  # any failure means "use the fallback"
+        return clean_error(failed.cause)
     return None
 
 
@@ -311,6 +367,11 @@ async def resolve_models(
                 env = providers[model.provider].env_key or providers[model.provider].env_base_url
                 console.print(f"  [yellow]•[/] {tier}: skipping {model.model} ({env} not set)")
                 continue
+            if not providers[model.provider].warm_up:
+                # Skipped where requests are scarce (free-tier daily quotas); the key was checked above.
+                console.print(f"  [green]✓[/] {tier}: {model.model} [dim](no warm-up)[/]")
+                chosen.append((model, base))
+                break
             with console.status(f"Warming up {model.model}…"):
                 error = await warm_up(model, base, settings)
             if error:
@@ -345,12 +406,43 @@ async def run_benchmark(
         console=console,
     )
 
+    # Models whose daily quota ran out: later requests would fail too, and each
+    # attempt can count against the quota, so they're recorded as skipped.
+    exhausted: set[str] = set()
+
+    def failed_record(model: ModelConfig, query: Query, repeat: int, error: str, retries: int) -> RunRecord:
+        return RunRecord(
+            run_id=run_id,
+            timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
+            tier=model.tier,
+            model=model.model,
+            provider=model.provider,
+            query_id=query.id,
+            category=query.category,
+            repeat=repeat,
+            ttft_s=None,
+            latency_s=None,
+            output_tokens_per_s=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            reasoning_tokens=0,
+            total_tokens=0,
+            usage_estimated=False,
+            cost_billed_usd=0.0,
+            cost_list_usd=0.0,
+            retries=retries,
+            finish_reason=None,
+            error=redact(error, providers),
+        )
+
     async def one(model: ModelConfig, base: dict[str, Any], query: Query, repeat: int, task_id: Any) -> None:
         kwargs = request_kwargs(model, base, settings, query.id)
         async with limits[model.provider]:
             if global_limit:
                 await global_limit.acquire()
             try:
+                if model.model in exhausted:
+                    raise _Skipped
                 result, retries = await timed_request(model, build_messages(query), kwargs, settings.max_retries)
                 m = result.metrics
                 record = RunRecord(
@@ -385,30 +477,12 @@ async def run_benchmark(
                         "response": result.text,
                     }
                 )
-            except Exception as exc:  # one bad request must not abort the run
-                record = RunRecord(
-                    run_id=run_id,
-                    timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
-                    tier=model.tier,
-                    model=model.model,
-                    provider=model.provider,
-                    query_id=query.id,
-                    category=query.category,
-                    repeat=repeat,
-                    ttft_s=None,
-                    latency_s=None,
-                    output_tokens_per_s=None,
-                    prompt_tokens=0,
-                    completion_tokens=0,
-                    reasoning_tokens=0,
-                    total_tokens=0,
-                    usage_estimated=False,
-                    cost_billed_usd=0.0,
-                    cost_list_usd=0.0,
-                    retries=settings.max_retries if isinstance(exc, RETRYABLE_ERRORS) else 0,
-                    finish_reason=None,
-                    error=redact(f"{type(exc).__name__}: {exc}", providers)[:500],
-                )
+            except _Skipped:
+                record = failed_record(model, query, repeat, "Skipped: daily quota exhausted earlier in this run", 0)
+            except RequestFailed as failed:  # one bad request must not abort the run
+                if is_daily_quota(failed.cause):
+                    exhausted.add(model.model)
+                record = failed_record(model, query, repeat, clean_error(failed.cause), failed.retries)
             finally:
                 if global_limit:
                     global_limit.release()

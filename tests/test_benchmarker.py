@@ -92,4 +92,42 @@ def test_free_only_drops_paid_models() -> None:
     candidates = benchmarker.load_tier_candidates(raw, ["frontier", "mid", "lightweight"], free_only=True)
     assert "frontier" not in candidates
     assert [m.model for m in candidates["mid"]] == ["gemini/gemini-3.8-flash"]
-    assert [m.model for m in candidates["lightweight"]] == ["ollama/llama3.2:3b"]
+    assert [m.model for m in candidates["lightweight"]] == ["ollama_chat/llama3.2:3b"]
+
+
+def test_retry_policy() -> None:
+    from litellm.exceptions import MidStreamFallbackError, RateLimitError
+
+    per_minute = RateLimitError(message='{"code": 429} Please retry in 12.5s.', llm_provider="gemini", model="m")
+    assert benchmarker.retry_delay(per_minute, 0) == pytest.approx(12.5)
+
+    daily = RateLimitError(
+        message='"code": 429, "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"',
+        llm_provider="gemini",
+        model="m",
+    )
+    assert benchmarker.is_daily_quota(daily) and benchmarker.retry_delay(daily, 0) is None
+
+    # litellm wraps a 429 mid-stream as a 503 subclass; it must still be treated as a rate limit.
+    wrapped = MidStreamFallbackError(message='"code": 429 PerDay quota', model="m", llm_provider="gemini")
+    assert benchmarker.retry_delay(wrapped, 0) is None
+    assert benchmarker.retry_delay(ValueError("bad prompt"), 0) is None
+
+
+async def test_daily_quota_skips_remaining_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.exceptions import RateLimitError
+
+    calls = 0
+
+    async def quota_gone(model: str, messages: list[dict[str, str]], **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        raise RateLimitError(message='"code": 429 GenerateRequestsPerDay', llm_provider="gemini", model=model)
+
+    monkeypatch.setattr(benchmarker, "stream_completion", quota_gone)
+    model = ModelConfig("mid", "gemini/x", "gemini", Pricing(1, 1))
+    queries = [Query(f"q{i}", "c", "hi", "") for i in range(5)]
+    settings = Settings(runs=1, max_tokens=8, timeout_s=5, max_retries=3, seed=None, dry_run=False, sequential=True)
+    records, _ = await run_benchmark([(model, {})], queries, {"gemini": ProviderConfig("gemini", 1)}, settings, "run")
+    assert calls == 1
+    assert sum("Skipped" in (r.error or "") for r in records) == 4

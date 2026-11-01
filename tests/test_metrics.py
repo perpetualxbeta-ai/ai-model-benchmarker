@@ -38,7 +38,9 @@ def test_local_is_zero_both_ways() -> None:
 
 
 def test_throughput_excludes_ttft() -> None:
-    m = RequestMetrics(ttft_s=0.5, latency_s=2.5, prompt_tokens=10, completion_tokens=100, total_tokens=110)
+    m = RequestMetrics(
+        ttft_s=0.5, latency_s=2.5, prompt_tokens=10, completion_tokens=100, total_tokens=110, content_chunks=20
+    )
     assert m.output_tokens_per_s == pytest.approx(50.0)
 
 
@@ -91,3 +93,20 @@ def test_summarize_excludes_errors_from_stats() -> None:
     assert row["latency_mean_s"] == pytest.approx(2.0)
     assert row["avg_prompt_tokens"] == pytest.approx(100)
     assert row["cost_per_1k_billed_usd"] == pytest.approx((100 * 2 + 40 * 12) / 1_000)
+
+
+def test_throughput_ignores_reasoning_and_bursts() -> None:
+    thinking = RequestMetrics(
+        ttft_s=40.0,
+        latency_s=40.5,
+        prompt_tokens=10,
+        completion_tokens=700,
+        total_tokens=710,
+        reasoning_tokens=600,
+        content_chunks=10,
+    )
+    assert thinking.output_tokens_per_s == pytest.approx(200.0)
+    burst = RequestMetrics(
+        ttft_s=2.7, latency_s=2.7037, prompt_tokens=10, completion_tokens=76, total_tokens=86, content_chunks=1
+    )
+    assert burst.output_tokens_per_s is None

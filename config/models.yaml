@@ -22,6 +22,7 @@ providers:
   gemini:
     env_key: GEMINI_API_KEY
     max_concurrency: 2        # free tier has tight RPM limits
+    warm_up: false            # free tier allows ~20 requests/day per model; don't spend one on warm-up
   openrouter:
     env_key: OPENROUTER_API_KEY
     max_concurrency: 4
@@ -65,7 +66,7 @@ tiers:
 
   lightweight:
     primary:
-      model: ollama/llama3.2:3b
+      model: ollama_chat/llama3.2:3b   # /api/chat; litellm's ollama/ route buffers JSON-looking output, delaying TTFT
       provider: ollama
       input_per_1m: 0.0
       output_per_1m: 0.0

@@ -36,7 +36,8 @@ Pin dependencies in `requirements.txt` (or `pyproject.toml`). Tests use `pytest`
   - Start the timer immediately before the request is awaited; record TTFT on the first chunk that contains non-empty content (not role-only or empty deltas).
   - Always stream when measuring TTFT. Request usage in the stream (e.g. `stream_options={"include_usage": True}`) and fall back to a tokenizer estimate only if the provider omits it — flag estimated counts in the results.
   - Exclude client setup, retries' backoff sleeps, and scoring time from latency figures. Record retries as a separate count.
-  - Do a warm-up request per model (discarded) before timed runs, especially for Ollama.
+  - Do a warm-up request per model (discarded) before timed runs, especially for Ollama. Providers can opt out with `warm_up: false` in `config/models.yaml` (Gemini free tier, where daily requests are scarce).
+  - Throughput (output tok/s) counts visible tokens only (completion minus reasoning) over the time after the first visible token, pooled across requests, and only for responses that streamed in at least 3 chunks.
 - **No hardcoded prices or model IDs in code.** Keep pricing and model lists in a config file (e.g. `config/models.yaml`) with a `last_updated` date.
 - **Errors:** catch provider errors per request, record them in the result row (`error` field) and keep the run going; never let one failing model abort the benchmark.
 - **Reproducibility:** fixed `temperature=0` (unless a task specifies otherwise), a `--seed` where supported, N repeat runs per prompt, and every result row tagged with timestamp, model, provider, and run ID.
@@ -60,6 +61,8 @@ As the project grows (Week 2 scoring), split into a `benchmarker/` package with 
 
 - Set up: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cp .env.example .env`
 - Check before committing: `pytest && ruff check . && mypy benchmarker.py metrics.py report.py`
+- Use `ollama_chat/` (not `ollama/`) for Ollama models: litellm's `ollama/` route buffers JSON-looking output, so TTFT lands at the end of the response.
+- Don't retry daily-quota 429s (they can't recover mid-run and retries spend quota); litellm can wrap 429s as `MidStreamFallbackError`, so check the status, not just the exception type.
 - Gemini 3+ models deprecate sampling params; their `params` in `config/models.yaml` set `temperature: null` so it isn't sent.
 - Never print or log API keys; redact them in error messages.
 - Only `results/SUMMARY.md` is committed; raw CSVs and responses stay local. Never commit a summary from a dry run — its numbers are mocked.

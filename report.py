@@ -136,6 +136,16 @@ def key_findings(summary: pd.DataFrame) -> list[str]:
             "list-price costs are in the table for planning a paid deployment."
         )
 
+    for r in rows:
+        reasoning = float(r.get("avg_reasoning_tokens") or 0)
+        completion = float(r["avg_completion_tokens"] or 0)
+        if reasoning > 0 and completion > 0:
+            findings.append(
+                f"**Hidden reasoning:** {_short(r['model'])} spent {reasoning / completion:.0%} of its output "
+                f"tokens ({_num(reasoning)} of {_num(completion)} per answer) thinking before it wrote anything. "
+                "That time is inside its TTFT, and those tokens are billed as output."
+            )
+
     verbose = _worst(rows, "avg_completion_tokens")
     terse = _best(rows, "avg_completion_tokens")
     if verbose and terse and verbose is not terse and float(terse["avg_completion_tokens"]) > 0:
@@ -201,20 +211,30 @@ def build_summary_markdown(summary: pd.DataFrame, runs: pd.DataFrame, meta: RunM
         "## Tokens and cost",
         "",
         markdown_table(
-            ["Tier", "Model", "Avg input tok", "Avg output tok", "Total tokens", "Cost / 1k billed", "Cost / 1k list"],
+            [
+                "Tier",
+                "Model",
+                "Avg input tok",
+                "Avg output tok",
+                "of which reasoning",
+                "Total tokens",
+                "Cost / 1k billed",
+                "Cost / 1k list",
+            ],
             [
                 [
                     r["tier"],
                     _short(r["model"]) + (" \\*" if r["usage_estimated"] else ""),
                     _num(r["avg_prompt_tokens"]),
                     _num(r["avg_completion_tokens"]),
+                    _num(r.get("avg_reasoning_tokens") or 0),
                     _num(r["total_tokens"]),
                     _billed(r),
                     _usd(r["cost_per_1k_list_usd"]),
                 ]
                 for r in rows
             ],
-            "llrrrrr",
+            "llrrrrrr",
         ),
         "",
         "Cost per 1,000 queries = (avg input tokens x input price + avg output tokens x output price) x 1,000.",
@@ -266,7 +286,9 @@ def build_summary_markdown(summary: pd.DataFrame, runs: pd.DataFrame, meta: RunM
         "- Response quality isn't scored yet (Week 2); this run measures speed, tokens and cost only.",
         "- Cloud latency includes network time from the machine that ran the benchmark; "
         "local Ollama latency depends on its hardware.",
-        "- Thinking models count reasoning tokens as output tokens, which raises their cost and latency.",
+        "- Thinking models generate hidden reasoning before their first visible token, so their TTFT includes "
+        "thinking time and their reasoning tokens are billed as output.",
+        "- Output tok/s counts visible tokens only, over requests that streamed in at least 3 chunks.",
         "- Prices change often; check `config/models.yaml` against the providers' pricing pages.",
         "",
         "Raw data: `benchmark_results.csv` (per model), `benchmark_runs.csv` (per request), "
